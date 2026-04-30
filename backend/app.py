@@ -1,8 +1,11 @@
+import os
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 
-API_KEY = "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"
+API_KEY = os.getenv("API_KEY")
+
 
 app = Flask(__name__)
 CORS(app)
@@ -15,18 +18,31 @@ def after_request(response):
     return response
 
 def ask_ai(prompt):
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "openrouter/auto",
-            "messages": [{"role": "user", "content": prompt}]
-        }
-    )
-    data = response.json()
+    if not API_KEY:
+        return "Error: API key not found. Please set the API_KEY environment variable."
+
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "openrouter/auto",
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=30
+        )
+        if response.status_code != 200:
+            return f"Error: API returned {response.status_code} - {response.text}"
+        
+        data = response.json()
+
+
+    except Exception as e:
+        return f"Error: {str(e)}"
+
     print("API RESPONSE:", data)  # This will show us what's coming back
     if "choices" in data:
         return data["choices"][0]["message"]["content"]
@@ -39,7 +55,7 @@ def ask_ai(prompt):
 def generate_questions():
     if request.method == "OPTIONS":
         return jsonify({}), 200
-    data = request.json
+    data = request.get_json(silent=True) or {}
     role = data.get("role", "Full Stack Developer")
     prompt = f"Generate 5 technical interview questions for a {role} intern position. Return only a numbered list, nothing else."
     result = ask_ai(prompt)
@@ -56,5 +72,6 @@ def evaluate_answer():
     result = ask_ai(prompt)
     return jsonify({"feedback": result})
 
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
